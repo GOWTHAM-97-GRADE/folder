@@ -1,53 +1,56 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <time.h>
+#include <unistd.h>
 
-#define WINDOW_SIZE 4   // Define the window size
-#define TOTAL_FRAMES 10 // Total frames to be sent
+#define MAX_BUFFER_SIZE 1024       // Receiver's buffer size in bytes
+#define DATA_PROCESS_RATE 50       // Bytes per second processed from the buffer
+#define MAX_DATA_SEND_RATE 100     // Maximum bytes per second the sender can send
+#define TOTAL_DATA_TO_SEND 500     // Total data to be sent by the sender
 
-void send_frames(int frames[], int frame_count, int *next_frame, int *ack);
-
-int main() {
-  int frames[TOTAL_FRAMES];
-  int next_frame = 0; // Next frame to send
-  int ack = 0;        // Last acknowledgment received
-
-  // Initialize frames with frame numbers
-  for (int i = 0; i < TOTAL_FRAMES; i++) {
-    frames[i] = i;
-  }
-
-  srand(time(0)); // Seed random number generator
-
-  // Start sending frames
-  while (ack < TOTAL_FRAMES) {
-    send_frames(frames, TOTAL_FRAMES, &next_frame, &ack);
-  }
-
-  printf("All frames sent and acknowledged successfully.\n");
-  return 0;
+int calculate_advertised_window(int buffer_size, int bytes_in_buffer) {
+    int advertised_window = buffer_size - bytes_in_buffer;
+    return (advertised_window > 0) ? advertised_window : 0; // Ensure window size is non-negative
 }
 
-void send_frames(int frames[], int frame_count, int *next_frame, int *ack) {
-  int end_frame = *next_frame + WINDOW_SIZE;
+int main() {
+    int buffer_size = MAX_BUFFER_SIZE;
+    int bytes_in_buffer = 0;
+    int total_bytes_sent = 0;
 
-  // Transmit frames within the window
-  for (int i = *next_frame; i < end_frame && i < frame_count; i++) {
-    printf("Sending frame %d\n", frames[i]);
-  }
+    while (total_bytes_sent < TOTAL_DATA_TO_SEND) {
+        // Calculate the advertised window
+        int advertised_window = calculate_advertised_window(buffer_size, bytes_in_buffer);
+        printf("Advertised Window Size: %d bytes\n", advertised_window);
 
-  // Simulate receiving acknowledgments
-  for (int i = *next_frame; i < end_frame && i < frame_count; i++) {
-    int lost = rand() % 2; // Randomly decide if ack is lost (50% chance)
+        // Sender sends data only up to the advertised window size
+        int data_to_send = (advertised_window < MAX_DATA_SEND_RATE) ? advertised_window : MAX_DATA_SEND_RATE;
+        if (total_bytes_sent + data_to_send > TOTAL_DATA_TO_SEND) {
+            data_to_send = TOTAL_DATA_TO_SEND - total_bytes_sent; // Adjust to avoid sending more than needed
+        }
+        
+        // Update buffer and total bytes sent
+        bytes_in_buffer += data_to_send;
+        total_bytes_sent += data_to_send;
+        
+        // Prevent overflow if buffer size is reached
+        if (bytes_in_buffer > buffer_size) {
+            bytes_in_buffer = buffer_size;
+        }
+        
+        // Simulate receiver processing
+        bytes_in_buffer -= DATA_PROCESS_RATE;
+        if (bytes_in_buffer < 0) {
+            bytes_in_buffer = 0;
+        }
 
-    if (!lost) {
-      printf("Acknowledgment received for frame %d\n", frames[i]);
-      (*ack)++;
-      (*next_frame)++;
-    } else {
-      printf("Acknowledgment lost for frame %d. Retransmitting from frame %d\n",
-             frames[i], frames[*next_frame]);
-      break;
+        // Display buffer status
+        printf("Bytes in Buffer after sending and processing: %d bytes\n", bytes_in_buffer);
+        printf("Total Data Sent: %d bytes\n", total_bytes_sent);
+
+        // Wait for 1 second to simulate real-time
+        sleep(1);
     }
-  }
+
+    printf("Data transfer complete. Total bytes sent: %d\n", total_bytes_sent);
+    return 0;
 }
